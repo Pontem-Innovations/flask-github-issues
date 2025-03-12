@@ -1,0 +1,69 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+.env
+*.env
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+*.whl
+
+# Unit test / coverage reports
+.coverage
+*.cover
+htmlcov/
+.tox/
+nosetests.xml
+coverage.xml
+pytest_cache/
+junit.xml
+
+# Logs and temporary files
+*.log
+*.tmp
+debug.log
+
+# macOS system files
+.DS_Store
+
+# PyCharm IDE files
+.idea/
+
+# VS Code settings
+.vscode/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# MyPy type checking cache
+.mypy_cache/
+
+# GitHub workflows cache
+.github/workflows/*.log
+
+# Ignore compiled C extensions
+*.so
+
+# Ignore local SQLite databases
+*.sqlite3
+*.db
+
+# Ignore dependency lock files (optional)
+poetry.lock
+Pipfile.lock
+
+# Ignore artifacts for PyPI
+MANIFEST
+
+# Ignore Python wheel and build artifacts
+*.tar.gz
+*.zip
