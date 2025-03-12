@@ -4,7 +4,7 @@ setup(
     name="flask-github-issues",
     version="0.1.0",
     packages=find_packages(),
-    install_requires=["requests", "pytz", "python-dotenv"],
+    install_requires=["requests", "pytz"],
     author="Your Name",
     author_email="geoff@ponteminnovations.ca",
     description="A Python package for tracking Flask errors via GitHub Issues.",

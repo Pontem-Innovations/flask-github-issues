@@ -15,7 +15,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install pytest requests-mock pytest-cov
+        run: pip install pytest requests-mock pytest-cov flask pytz
 
       - name: Run tests
         run: pytest tests/ --cov=tests/ --cov-fail-under=90

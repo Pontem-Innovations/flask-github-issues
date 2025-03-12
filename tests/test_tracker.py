@@ -1,19 +1,22 @@
 import pytest
-import requests
+from flask import Flask
 import requests_mock
 from error_tracker.tracker import ErrorTracking
 
 
 @pytest.fixture
 def tracker():
-    return ErrorTracking(
-        client_name="TestClient",
-        gh_token="fake_token",
-        gh_repo="testorg/testrepo",
-        assignees=["testuser"],
-        labels=["bug"]
-    )
+    """Creates a Flask app and initializes ErrorTracking with test configuration."""
+    app = Flask(__name__)
+    app.config["GH_TOKEN"] = "fake_token"
+    app.config["GH_REPO"] = "testorg/testrepo"
+    app.config["GH_ASSIGNEES"] = ["testuser"]
+    app.config["GH_LABELS"] = ["bug"]
+    app.config["GH_TYPES"] = ["issue"]  # Add this to match your class update
 
+    tracker = ErrorTracking()
+    tracker.init_app(app)  # Manually initialize the extension
+    return tracker
 
 def test_hash_error(tracker):
     error_message = "This is a test error"

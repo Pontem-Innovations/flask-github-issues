@@ -2,23 +2,32 @@ import hashlib
 import requests
 from datetime import datetime
 import pytz
-import os
-from dotenv import load_dotenv
 
 class ErrorTracking:
-    def __init__(self, client_name=None, gh_token=None, gh_repo=None, assignees=None, labels=None):
-        """Initialize the error tracking class."""
-        base_dir = os.path.abspath(os.path.dirname(__file__))
-        load_dotenv(os.path.join(base_dir, ".env"))
+    def __init__(self, app=None):
+        """Initialize ErrorTracking. If an app is provided, call init_app()."""
+        self.GH_TOKEN = None
+        self.GH_REPO = None
+        self.assignees = []
+        self.labels = []
+        self.types = []
 
-        self.client_name = client_name or os.getenv("CLIENT_NAME")
-        self.gh_token = gh_token or os.getenv("gh_token")
-        self.gh_repo = gh_repo or os.getenv("GH_REPO")
-        self.assignees = assignees or os.getenv("GH_ASSIGNEES", "").split(",") if os.getenv("GH_ASSIGNEES") else []
-        self.labels = labels or os.getenv("GH_LABELS", "").split(",") if os.getenv("GH_LABELS") else ["bug"]
+        if app:
+            self.init_app(app)
+    
+    def init_app(self, app):
+        """Initialize the app with ErrorTracking."""
+        self.gh_token = app.config.get("GH_TOKEN")
+        self.gh_repo = app.config.get("GH_REPO")
+        self.assignees = app.config.get("GH_ASSIGNEES", [])
+        self.labels = app.config.get("GH_LABELS", [])
+        self.types = app.config.get("GH_TYPES", [])
 
         if not self.gh_token or not self.gh_repo:
-            raise ValueError("GitHub token and repository must be provided.")
+            raise ValueError("GH_TOKEN and GH_REPO must be set in configuration.")
+
+        # Attach to app
+        app.extensions["error_tracking"] = self  # Enables app.extensions["error_tracking"]
 
     def hash_error(self, error_message):
         return hashlib.sha1(error_message.encode()).hexdigest()
@@ -61,7 +70,7 @@ class ErrorTracking:
         """Create a new issue on GitHub."""
         url = f"https://api.github.com/repos/{self.gh_repo}/issues"
         headers = {"Authorization": f"token {self.gh_token}"}
-        data = {"title": title, "body": body, "assignees": self.assignees, "labels": self.labels}
+        data = {"title": title, "body": body, "assignees": self.assignees, "labels": self.labels, "type": self.types}
         response = requests.post(url, headers=headers, json=data)
         if response.status_code == 201:
             print("Issue created successfully.")
