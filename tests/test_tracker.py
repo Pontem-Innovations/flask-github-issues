@@ -1,7 +1,7 @@
 import pytest
 from flask import Flask
 import requests_mock
-from error_tracker.tracker import ErrorTracking
+from flask_github_issues import ErrorTracking
 
 
 @pytest.fixture
