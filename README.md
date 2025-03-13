@@ -42,6 +42,7 @@ class Config:
     GH_REPO = os.getenv("GH_REPO")
     GH_ASSIGNEES = ["ghawes85"]
     GH_LABELS = ["bug"]
+    GH_TYPES = "bug" # Types is being released in the GitHub API. Currently if it is rolled out for you or your org, then can add one type
 ```
 
 - Repo is in the form org/repo_name or user/repo_name
