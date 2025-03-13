@@ -3,6 +3,7 @@ import requests
 from datetime import datetime
 import pytz
 
+
 class ErrorTracking:
     def __init__(self, app=None):
         """Initialize ErrorTracking. If an app is provided, call init_app()."""
@@ -14,7 +15,7 @@ class ErrorTracking:
 
         if app:
             self.init_app(app)
-    
+
     def init_app(self, app):
         """Initialize the app with ErrorTracking."""
         self.gh_token = app.config.get("GH_TOKEN")
@@ -27,7 +28,9 @@ class ErrorTracking:
             raise ValueError("GH_TOKEN and GH_REPO must be set in configuration.")
 
         # Attach to app
-        app.extensions["error_tracking"] = self  # Enables app.extensions["error_tracking"]
+        app.extensions["error_tracking"] = (
+            self  # Enables app.extensions["error_tracking"]
+        )
 
     def hash_error(self, error_message):
         return hashlib.sha1(error_message.encode()).hexdigest()
@@ -39,7 +42,9 @@ class ErrorTracking:
             return
 
         error_hash = self.hash_error(error_message)
-        timestamp = datetime.now(pytz.timezone("Canada/Mountain")).strftime("%A %B %d %Y %H:%M:%S")
+        timestamp = datetime.now(pytz.timezone("Canada/Mountain")).strftime(
+            "%A %B %d %Y %H:%M:%S"
+        )
         error_message_strip = error_message.strip().split("\n")[-1].split(":")[0]
         title = f"{error_message_strip} - Key:{error_hash}"
         body = f"**Timestamp:** {timestamp}\n**User Email:** {user_email if user_email else ''}\n**URL:** {url if url else ''}\n**Error Message:**\n```{error_message}```"
@@ -54,7 +59,10 @@ class ErrorTracking:
                 if any(user_email in comment["body"] for comment in comments):
                     print("User has already reported this issue.")
                     return
-                self.comment_on_issue(issue["number"], f"New occurrence detected:\n\n**Timestamp:** {timestamp}\n**User Email:** {user_email}\n**URL:** {url}")
+                self.comment_on_issue(
+                    issue["number"],
+                    f"New occurrence detected:\n\n**Timestamp:** {timestamp}\n**User Email:** {user_email}\n**URL:** {url}",
+                )
                 return
 
         self.create_issue(title, body)
@@ -70,7 +78,13 @@ class ErrorTracking:
         """Create a new issue on GitHub."""
         url = f"https://api.github.com/repos/{self.gh_repo}/issues"
         headers = {"Authorization": f"token {self.gh_token}"}
-        data = {"title": title, "body": body, "assignees": self.assignees, "labels": self.labels, "type": self.types}
+        data = {
+            "title": title,
+            "body": body,
+            "assignees": self.assignees,
+            "labels": self.labels,
+            "type": self.types,
+        }
         response = requests.post(url, headers=headers, json=data)
         if response.status_code == 201:
             print("Issue created successfully.")
