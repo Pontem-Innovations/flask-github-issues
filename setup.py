@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="flask-github-issues",
-    version="v0.1.1",
+    version="v0.1.2",
     packages=find_packages(),
     install_requires=["requests", "pytz"],
     author="Pontem Innovations",

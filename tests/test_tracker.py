@@ -6,25 +6,29 @@ from flask_github_issues import ErrorTracking
 
 @pytest.fixture
 def tracker():
-    """Creates a Flask app and initializes ErrorTracking with test configuration."""
+    """Create a Flask app and initialise ErrorTracking with test config."""
     app = Flask(__name__)
-    app.config["GH_TOKEN"] = "fake_token"
-    app.config["GH_REPO"] = "testorg/testrepo"
-    app.config["GH_ASSIGNEES"] = ["testuser"]
-    app.config["GH_LABELS"] = ["bug"]
-    app.config["GH_TYPES"] = ["issue"]  # Add this to match your class update
+    app.config.update(
+        GH_TOKEN="fake_token",
+        GH_REPO="testorg/testrepo",
+        GH_ASSIGNEES=["testuser"],
+        GH_LABELS=["bug"],
+        GH_TYPES=["issue"],
+    )
+    et = ErrorTracking()
+    et.init_app(app)
+    return et
 
-    tracker = ErrorTracking()
-    tracker.init_app(app)  # Manually initialize the extension
-    return tracker
 
+# ───────────────────────── hash helper ──────────────────────────
 def test_hash_error(tracker):
     error_message = "This is a test error"
-    error_hash = tracker.hash_error(error_message)
-    assert len(error_hash) == 40  # SHA1 hashes are 40 characters long
+    error_hash = tracker._hash(error_message)       # new name
+    assert len(error_hash) == 40
     assert isinstance(error_hash, str)
 
 
+# ───────────────────────── open issues ──────────────────────────
 def test_get_open_issues(tracker):
     with requests_mock.Mocker() as m:
         m.get(
@@ -32,11 +36,12 @@ def test_get_open_issues(tracker):
             json=[{"title": "Test Issue", "number": 1}],
             status_code=200,
         )
-        issues = tracker.get_open_issues()
+        issues = tracker._get_open_issues()         # new name
         assert len(issues) == 1
         assert issues[0]["title"] == "Test Issue"
 
 
+# ───────────────────────── create issue ─────────────────────────
 def test_create_issue(tracker):
     with requests_mock.Mocker() as m:
         m.post(
@@ -44,9 +49,10 @@ def test_create_issue(tracker):
             json={"number": 1, "title": "Test Issue"},
             status_code=201,
         )
-        tracker.create_issue("Test Issue", "Test Body")
+        tracker._create_issue("Test Issue", "Test Body")   # new name
 
 
+# ───────────────────────── comment issue ────────────────────────
 def test_comment_on_issue(tracker):
     with requests_mock.Mocker() as m:
         m.post(
@@ -54,9 +60,10 @@ def test_comment_on_issue(tracker):
             json={"id": 1, "body": "Test Comment"},
             status_code=201,
         )
-        tracker.comment_on_issue(1, "Test Comment")
+        tracker._comment_on_issue(1, "Test Comment")       # new name
 
 
+# ───────────────────────── get comments ────────────────────────
 def test_get_issue_comments(tracker):
     with requests_mock.Mocker() as m:
         m.get(
@@ -64,6 +71,6 @@ def test_get_issue_comments(tracker):
             json=[{"id": 1, "body": "Existing comment"}],
             status_code=200,
         )
-        comments = tracker.get_issue_comments(1)
+        comments = tracker._get_issue_comments(1)          # new name
         assert len(comments) == 1
         assert comments[0]["body"] == "Existing comment"

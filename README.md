@@ -25,13 +25,24 @@ def create_app(config_env=os.getenv("ENV"), register_blueprints=True):
 
     gitub_error_tracking.init_app(app)
 
-    @app.errorhandler(Exception)
+
+@app.errorhandler(Exception)
     def internal_server_error(e):
-        error_msg = traceback.format_exc()
-        user_email = session.get("email") # Other ways you might be storing user email
-        url = request.url
-        gitub_error_tracking.track_error(error_msg, user_email, url)
-        return render_template("500.html"), 500
+        if request.path.startswith("/static/"):
+            # Return a simple 500 response without rendering a template
+            return "", 500
+        else:
+            
+            error_msg = traceback.format_exc()
+            user_email = session.get("email", "unknown")
+            github_error_tracking.track_error(error_message=str(error_msg),
+                details=[
+                    {"User Email": user_email},
+                    {"URL": request.url},
+                    {"Tenant": "TEST"},
+                ],
+            )
+            return render_template("500.html"), 500
 ```
 
 config.py:
