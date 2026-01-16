@@ -2,9 +2,9 @@ from setuptools import setup, find_packages
 
 setup(
     name="flask-github-issues",
-    version="0.1.4",
+    version="0.1.5",
     packages=find_packages(),
-    install_requires=["requests", "pytz"],
+    install_requires=["requests", "pytz", "user-agents"],
     author="Pontem Innovations",
     author_email="geoff@ponteminnovations.ca",
     description="A Python package for tracking Flask errors via GitHub Issues.",

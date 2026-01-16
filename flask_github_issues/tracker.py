@@ -6,6 +6,31 @@ import re
 from urllib.parse import urlparse
 import ipaddress
 import sys
+import json
+
+try:
+    from flask import has_request_context, request
+    HAS_FLASK = True
+except ImportError:
+    HAS_FLASK = False
+
+try:
+    from user_agents import parse as parse_ua
+    HAS_UA_PARSER = True
+except ImportError:
+    HAS_UA_PARSER = False
+
+# Default sensitive field names to redact from request bodies
+DEFAULT_SENSITIVE_FIELDS = [
+    "password", "passwd", "pwd",
+    "token", "access_token", "refresh_token", "auth_token",
+    "secret", "client_secret",
+    "api_key", "apikey",
+    "authorization", "auth",
+    "credit_card", "card_number", "cvv", "cvc",
+    "ssn", "social_security",
+]
+
 
 class ErrorTracking:
     def __init__(self, app=None):
@@ -17,6 +42,10 @@ class ErrorTracking:
         self.include_localhost = False
         self.reraise_local = True
         self.project_cfg = None
+        # Request body capture settings
+        self.capture_body = True
+        self.body_max_length = 2000
+        self.sensitive_fields = DEFAULT_SENSITIVE_FIELDS.copy()
         if app:
             self.init_app(app)
 
@@ -32,6 +61,11 @@ class ErrorTracking:
         self.reraise_local = app.config.get("GH_RERAISE_LOCAL_ON_SKIP", True)
         self.project_cfg = app.config.get("GH_PROJECT")
 
+        # Request body capture settings (opt-out, enabled by default)
+        self.capture_body = app.config.get("GH_CAPTURE_BODY", True)
+        self.body_max_length = app.config.get("GH_BODY_MAX_LENGTH", 2000)
+        self.sensitive_fields = app.config.get("GH_SENSITIVE_FIELDS", DEFAULT_SENSITIVE_FIELDS.copy())
+
         if not self.gh_token or not self.gh_repo:
             raise ValueError("GH_TOKEN and GH_REPO must be set in configuration.")
         app.extensions["error_tracking"] = self
@@ -41,12 +75,27 @@ class ErrorTracking:
         """
         Log an error. `details` is a list of single‑key dicts that will be
         rendered in the issue body, e.g. `[{'User Email': 'a@b.com'}, {'URL': '/foo'}]`.
+        
+        Request context (Method, URL, Device, OS, Browser, Body) is automatically
+        captured when called within a Flask request context. User-provided details
+        override auto-captured values for the same keys.
         """
         if not error_message:
             print("Error message is required.")
             return
 
         details = details or []
+        
+        # Auto-capture request context and merge with user-provided details
+        auto_captured = self._capture_request_context()
+        if auto_captured:
+            # Get keys that user explicitly provided
+            user_keys = {k for d in details for k in d.keys()}
+            # Only add auto-captured fields that user didn't override
+            for auto_detail in auto_captured:
+                for key in auto_detail:
+                    if key not in user_keys:
+                        details.append(auto_detail)
 
         if not self.include_localhost and self._details_contain_local(details):
             print("Skipping error because URL is localhost/private and GH_INCLUDE_LOCALHOST is False.")
@@ -110,9 +159,57 @@ class ErrorTracking:
 
     @staticmethod
     def _build_body(ts: str, err: str, details: list[dict], *, prefix: str = "") -> str:
-        md_details = "\n".join(f"**{k}:** {v}" for d in details for k, v in d.items())
-        err_block = f"\n**Error Message:**\n```{err}```" if err else ""
-        return f"{prefix}**Timestamp:** {ts}\n{md_details}{err_block}"
+        # Categorize details into sections
+        request_keys = {"Method", "URL", "Body"}
+        client_keys = {"Device", "OS", "Browser"}
+        
+        request_info = []
+        client_info = []
+        context_info = []
+        
+        for d in details:
+            for k, v in d.items():
+                if k in request_keys:
+                    request_info.append((k, v))
+                elif k in client_keys:
+                    client_info.append((k, v))
+                else:
+                    context_info.append((k, v))
+        
+        sections = [f"{prefix}**Timestamp:** {ts}"]
+        
+        # Request Info section
+        if request_info:
+            # Sort to ensure consistent order: Method, URL, Body
+            order = {"Method": 0, "URL": 1, "Body": 2}
+            request_info.sort(key=lambda x: order.get(x[0], 99))
+            sections.append("\n**Request Info:**")
+            for k, v in request_info:
+                if k == "Body" and v:
+                    sections.append(f"**{k}:**\n```json\n{v}\n```")
+                else:
+                    sections.append(f"**{k}:** {v}")
+        
+        # Client Info section
+        if client_info:
+            # Sort to ensure consistent order: Device, OS, Browser
+            order = {"Device": 0, "OS": 1, "Browser": 2}
+            client_info.sort(key=lambda x: order.get(x[0], 99))
+            sections.append("\n**Client Info:**")
+            for k, v in client_info:
+                sections.append(f"**{k}:** {v}")
+        
+        # Context section (user-provided details)
+        if context_info:
+            sections.append("\n**Context:**")
+            for k, v in context_info:
+                sections.append(f"**{k}:** {v}")
+        
+        # Error message
+        if err:
+            sections.append(f"\n**Error Message:**\n```{err}```")
+        
+        return "\n".join(sections)
 
     @staticmethod
     def _all_detail_values_present(blob: dict, details: list[dict]) -> bool:
@@ -147,6 +244,141 @@ class ErrorTracking:
             except Exception:
                 pass
         return False
+
+    # ───────────────────── request context capture ────────────────────────────
+    def _capture_request_context(self) -> list[dict]:
+        """
+        Auto-capture request context when inside a Flask request.
+        Returns a list of single-key dicts for: Method, URL, Device, OS, Browser, Body.
+        """
+        if not HAS_FLASK or not has_request_context():
+            return []
+        
+        captured = []
+        
+        # Method
+        captured.append({"Method": request.method})
+        
+        # URL
+        captured.append({"URL": request.url})
+        
+        # User-Agent parsing (Device, OS, Browser)
+        ua_string = request.headers.get("User-Agent", "")
+        if ua_string:
+            ua_details = self._parse_user_agent(ua_string)
+            for key, value in ua_details.items():
+                if value:  # Only add non-empty values
+                    captured.append({key: value})
+        
+        # Request body (only for methods that typically have a body)
+        if self.capture_body and request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            body = self._get_request_body()
+            if body:
+                captured.append({"Body": body})
+        
+        return captured
+    
+    @staticmethod
+    def _parse_user_agent(ua_string: str) -> dict:
+        """
+        Parse User-Agent string into Device, OS, and Browser components.
+        Returns dict with keys: Device, OS, Browser (values may be empty strings).
+        """
+        if not HAS_UA_PARSER or not ua_string:
+            return {"Device": "", "OS": "", "Browser": ""}
+        
+        try:
+            ua = parse_ua(ua_string)
+            
+            # Device: family + brand + model
+            device_parts = []
+            if ua.device.family and ua.device.family != "Other":
+                device_parts.append(ua.device.family)
+            if ua.device.brand:
+                device_parts.append(ua.device.brand)
+            if ua.device.model:
+                device_parts.append(ua.device.model)
+            device = " ".join(device_parts) if device_parts else "Desktop/Unknown"
+            
+            # Determine device type
+            if ua.is_mobile:
+                device = f"Mobile - {device}"
+            elif ua.is_tablet:
+                device = f"Tablet - {device}"
+            elif ua.is_pc:
+                device = f"Desktop - {device}" if device != "Desktop/Unknown" else "Desktop"
+            elif ua.is_bot:
+                device = f"Bot - {device}"
+            
+            # OS: family + version
+            os_parts = [ua.os.family] if ua.os.family else []
+            if ua.os.version_string:
+                os_parts.append(ua.os.version_string)
+            os_str = " ".join(os_parts) if os_parts else "Unknown"
+            
+            # Browser: family + version
+            browser_parts = [ua.browser.family] if ua.browser.family else []
+            if ua.browser.version_string:
+                browser_parts.append(ua.browser.version_string)
+            browser = " ".join(browser_parts) if browser_parts else "Unknown"
+            
+            return {"Device": device, "OS": os_str, "Browser": browser}
+        except Exception:
+            return {"Device": "", "OS": "", "Browser": ""}
+    
+    def _get_request_body(self) -> str:
+        """
+        Get sanitized request body (JSON or form data).
+        Redacts sensitive fields and truncates to max length.
+        """
+        try:
+            # Try JSON first
+            if request.is_json:
+                body_data = request.get_json(silent=True)
+                if body_data:
+                    sanitized = self._sanitize_data(body_data)
+                    return self._truncate_body(json.dumps(sanitized, indent=2, default=str))
+            
+            # Try form data
+            if request.form:
+                form_dict = dict(request.form)
+                sanitized = self._sanitize_data(form_dict)
+                return self._truncate_body(json.dumps(sanitized, indent=2, default=str))
+            
+            # Raw data (for other content types)
+            raw = request.get_data(as_text=True)
+            if raw:
+                return self._truncate_body(raw)
+        except Exception:
+            pass
+        
+        return ""
+    
+    def _sanitize_data(self, data):
+        """
+        Recursively redact sensitive fields from dicts/lists.
+        """
+        if isinstance(data, dict):
+            result = {}
+            for key, value in data.items():
+                # Check if key matches any sensitive field (case-insensitive)
+                if any(s.lower() in key.lower() for s in self.sensitive_fields):
+                    result[key] = "***REDACTED***"
+                else:
+                    result[key] = self._sanitize_data(value)
+            return result
+        elif isinstance(data, list):
+            return [self._sanitize_data(item) for item in data]
+        else:
+            return data
+    
+    def _truncate_body(self, body: str) -> str:
+        """
+        Truncate body to max length with indicator.
+        """
+        if len(body) <= self.body_max_length:
+            return body
+        return body[:self.body_max_length] + "\n... [truncated]"
 
     # ────────────────────────── GitHub REST helpers ───────────────────────────
     def _get_open_issues(self):
